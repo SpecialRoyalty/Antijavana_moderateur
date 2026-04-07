@@ -31,7 +31,7 @@ BOT_USERNAME = os.getenv("BOT_USERNAME")
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else None
 
 # promo codé en dur comme demandé
-PROMO_PHOTO = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3"
+PROMO_PHOTO = "https://leakimedia.com/attachments/capture-d%C3%A9cran-2024-09-09-051601-png.843106/"
 PROMO_TEXT = (
     "🔥 Bienvenue dans notre communauté.\n\n"
     "Partage le groupe à tes amis et démarre le bot pour recevoir automatiquement "
