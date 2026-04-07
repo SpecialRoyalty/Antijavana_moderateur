@@ -32,12 +32,23 @@ BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-PROMO_PHOTO = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3"
+PROMO_PHOTO = "https://i.postimg.cc/hPF89qS6/photo-5857106632125386141-y.jpg"
 PROMO_TEXT = (
-    "🔥 Bienvenue dans notre communauté.\n\n"
-    "Partage le groupe à tes amis et enregistre-toi avec le bot pour recevoir "
-    "automatiquement le nouveau lien si le groupe change."
-)
+    "🔥 Bienvenue à tous les Anti-Javana.\n\n"
+    "Javana est un scam.UNE ARNAQUE!\n"
+    "Ils récupèrent les vidéos que nous publions pour alimenter leur VIP… "
+    "et ensuite nous les faire payer.\n\n"
+    "Alors un groupe a décidé de ne plus se plier et de se rebeller.\n\n"
+    "Ici, pas de hiérarchie, pas de discrimination.\n"
+    "Seulement des bots sous intelligence artificielle pour assurer le bon fonctionnement du groupe.\n\n"
+    "Trop, c’est trop.\n"
+    "Nous savons que cela dérange.\n"
+    "Mais nos bots détectent les traîtres, les signalements abusifs et les infiltrations.\n\n"
+    "Clique sur le bouton pour t’enregistrer et recevoir en temps réel le nouveau lien "
+    "si le groupe venait à disparaître.\n"
+    "Le remplacement est immédiat, automatisé, et actif 24h/24.\n\n"
+    "Le contenu ne disparaît jamais.\n\n"
+    "Par le peuple, pour le peuple."
 
 FIRST_PROMO_DELETE_AFTER = 600
 EACH_20_PROMO_DELETE_AFTER = 300
