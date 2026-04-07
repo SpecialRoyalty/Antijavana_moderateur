@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
-from .models import Admin, Subscriber, GroupConfig, JoinEvent, BroadcastLog
+from .models import Admin, Subscriber, GroupConfig, JoinEvent, PromoLog, BroadcastLog
 
 
 def ensure_single_group_config(db: Session) -> GroupConfig:
@@ -27,30 +27,28 @@ def is_admin(db: Session, user_id: int) -> bool:
     return db.query(Admin).filter(Admin.user_id == user_id, Admin.is_active == True).first() is not None
 
 
-def upsert_subscriber(
-    db: Session,
-    user_id: int,
-    username: str | None,
-    first_name: str | None,
-    language_code: str | None,
-):
-    subscriber = db.query(Subscriber).filter(Subscriber.user_id == user_id).first()
-    if not subscriber:
-        subscriber = Subscriber(
+def upsert_subscriber(db: Session, user_id: int, username: str | None, first_name: str | None, language_code: str | None):
+    sub = db.query(Subscriber).filter(Subscriber.user_id == user_id).first()
+    if not sub:
+        sub = Subscriber(
             user_id=user_id,
             username=username,
             first_name=first_name,
             language_code=language_code,
         )
-        db.add(subscriber)
+        db.add(sub)
     else:
-        subscriber.username = username
-        subscriber.first_name = first_name
-        subscriber.language_code = language_code
+        sub.username = username
+        sub.first_name = first_name
+        sub.language_code = language_code
 
     db.commit()
-    db.refresh(subscriber)
-    return subscriber
+    db.refresh(sub)
+    return sub
+
+
+def get_all_subscribers(db: Session):
+    return db.query(Subscriber).order_by(Subscriber.id.asc()).all()
 
 
 def set_group(db: Session, chat_id: int, title: str | None):
@@ -78,18 +76,19 @@ def add_join_event(
     username: str | None,
     first_name: str | None,
     language_code: str | None,
-    invite_link: str | None,
+    invite_link_used: str | None,
 ):
+    config = ensure_single_group_config(db)
+
     event = JoinEvent(
         user_id=user_id,
         username=username,
         first_name=first_name,
         language_code=language_code,
-        invite_link=invite_link,
+        invite_link_used=invite_link_used,
     )
     db.add(event)
 
-    config = ensure_single_group_config(db)
     config.join_counter += 1
     config.updated_at = datetime.utcnow()
 
@@ -99,39 +98,54 @@ def add_join_event(
     return event, config
 
 
-def should_send_promo(config: GroupConfig) -> bool:
-    if config.join_counter <= 0:
-        return False
-    return config.join_counter % config.welcome_every == 0
+def get_join_count(db: Session) -> int:
+    config = ensure_single_group_config(db)
+    return config.join_counter
+
+
+def should_send_first_promo(db: Session) -> bool:
+    return db.query(PromoLog).filter(PromoLog.reason == "first_join").count() == 0
+
+
+def should_send_every_20_promo(db: Session) -> bool:
+    count = get_join_count(db)
+    return count > 0 and count % 20 == 0
+
+
+def log_promo(db: Session, group_chat_id: int, reason: str, promo_message_id: int | None):
+    row = PromoLog(
+        group_chat_id=group_chat_id,
+        reason=reason,
+        promo_message_id=promo_message_id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def create_broadcast_log(db: Session, admin_user_id: int, group_chat_id: int, text: str):
-    log = BroadcastLog(
+    row = BroadcastLog(
         admin_user_id=admin_user_id,
         group_chat_id=group_chat_id,
         text=text,
     )
-    db.add(log)
+    db.add(row)
     db.commit()
-    db.refresh(log)
-    return log
+    db.refresh(row)
+    return row
 
 
 def build_stats_text(db: Session) -> str:
     config = ensure_single_group_config(db)
-    subscribers = db.query(Subscriber).count()
+    subs = db.query(Subscriber).count()
     joins = db.query(JoinEvent).count()
-
-    group_name = config.group_title or config.group_chat_id or "Non défini"
-    invite_link = config.invite_link or "Non défini"
 
     return (
         "📊 Statistiques\n\n"
-        f"Groupe : {group_name}\n"
-        f"Lien actuel : {invite_link}\n"
-        f"Total joins comptés : {joins}\n"
-        f"Compteur actuel : {config.join_counter}\n"
-        f"Message promo tous les : {config.welcome_every}\n"
-        f"Suppression promo après : {config.promo_message_delete_after}s\n"
-        f"Abonnés bot privés : {subscribers}"
+        f"Groupe : {config.group_title or config.group_chat_id or 'Non défini'}\n"
+        f"Lien actuel : {config.invite_link or 'Non défini'}\n"
+        f"Total joins : {joins}\n"
+        f"Compteur joins : {config.join_counter}\n"
+        f"Abonnés bot : {subs}"
     )
