@@ -32,8 +32,6 @@ class GroupConfig(Base):
     group_title = Column(String, nullable=True)
     invite_link = Column(Text, nullable=True)
     join_counter = Column(Integer, default=0, nullable=False)
-    welcome_every = Column(Integer, default=20, nullable=False)
-    promo_message_delete_after = Column(Integer, default=300, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -45,8 +43,18 @@ class JoinEvent(Base):
     username = Column(String, nullable=True)
     first_name = Column(String, nullable=True)
     language_code = Column(String, nullable=True)
-    invite_link = Column(Text, nullable=True)
+    invite_link_used = Column(Text, nullable=True)
     joined_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PromoLog(Base):
+    __tablename__ = "promo_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_chat_id = Column(BigInteger, nullable=False)
+    reason = Column(String, nullable=False)  # first_join | every_20
+    promo_message_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class BroadcastLog(Base):
