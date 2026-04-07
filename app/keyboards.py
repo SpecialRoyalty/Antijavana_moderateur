@@ -4,14 +4,16 @@ from urllib.parse import quote
 def inline_keyboard(rows):
     return {"inline_keyboard": rows}
 
-
 def admin_menu():
     return inline_keyboard([
         [{"text": "📊 Voir les stats", "callback_data": "show_stats"}],
         [{"text": "🔗 Mettre à jour le lien", "callback_data": "update_link"}],
         [{"text": "📢 Broadcast groupe", "callback_data": "broadcast_group"}],
         [{"text": "📨 Envoyer le lien à tous", "callback_data": "push_link_all"}],
+        [{"text": "🚀 Publish", "callback_data": "publish_promo"}],
     ])
+
+
 
 
 def user_menu():
