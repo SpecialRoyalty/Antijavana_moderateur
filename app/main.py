@@ -50,7 +50,7 @@ PROMO_TEXT = (
     "Le contenu ne disparaît jamais.\n\n"
     "Par le peuple, pour le peuple.")
 
-FIRST_PROMO_DELETE_AFTER = 600
+FIRST_PROMO_DELETE_AFTER = 1800
 EACH_20_PROMO_DELETE_AFTER = 300
 
 PENDING_ACTIONS = {}
@@ -73,7 +73,6 @@ async def lifespan(app: FastAPI):
             raw_id = raw_id.strip()
             if raw_id:
                 ensure_admin(db, int(raw_id), None)
-
     finally:
         db.close()
 
@@ -91,12 +90,12 @@ async def root():
 @app.get("/set-webhook")
 async def set_webhook():
     webhook_url = f"{BASE_URL}/webhook"
-    r = requests.post(f"{API_URL}/setWebhook", json={"url": webhook_url})
+    r = requests.post(f"{API_URL}/setWebhook", json={"url": webhook_url}, timeout=30)
     return r.json()
 
 
 def tg_post(method, payload):
-    return requests.post(f"{API_URL}/{method}", json=payload)
+    return requests.post(f"{API_URL}/{method}", json=payload, timeout=60)
 
 
 def send_message(chat_id, text, reply_markup=None):
@@ -121,12 +120,19 @@ def delete_message(chat_id, message_id):
     return tg_post("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
 
 
+def answer_callback_query(callback_query_id, text=""):
+    payload = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+    return tg_post("answerCallbackQuery", payload)
+
+
 async def delete_later(chat_id, message_id, delay):
     await asyncio.sleep(delay)
     try:
         delete_message(chat_id, message_id)
-    except:
-        pass
+    except Exception as e:
+        print("DELETE LATER ERROR:", str(e), flush=True)
 
 
 def send_promo(group_id, link, delay):
@@ -138,20 +144,53 @@ def send_promo(group_id, link, delay):
     )
 
     try:
-        msg_id = r.json()["result"]["message_id"]
+        data = r.json()
+        print("PROMO RESPONSE:", data, flush=True)
+        msg_id = data["result"]["message_id"]
         asyncio.create_task(delete_later(group_id, msg_id, delay))
         return msg_id
-    except:
+    except Exception as e:
+        print("PROMO ERROR:", str(e), flush=True)
         return None
+
+
+def language_is_french(language_code):
+    if language_code is None:
+        return True
+    return language_code.lower().startswith("fr")
+
+
+def push_new_link_to_all(db, link):
+    users = get_all_subscribers(db)
+    sent = 0
+
+    for u in users:
+        try:
+            send_message(
+                u.user_id,
+                f"🔗 Le lien du groupe a été mis à jour :\n{link}",
+                user_menu()
+            )
+            sent += 1
+        except Exception as e:
+            print("PUSH LINK ERROR:", str(e), flush=True)
+
+    return sent
 
 
 def handle_private(db, msg):
     user = msg["from"]
     uid = user["id"]
     chat_id = msg["chat"]["id"]
-    text = msg.get("text", "")
+    text = msg.get("text", "").strip()
 
-    upsert_subscriber(db, uid, user.get("username"), user.get("first_name"), user.get("language_code"))
+    upsert_subscriber(
+        db,
+        uid,
+        user.get("username"),
+        user.get("first_name"),
+        user.get("language_code")
+    )
 
     if text == "/start":
         if is_admin(db, uid):
@@ -166,15 +205,30 @@ def handle_private(db, msg):
     pending = PENDING_ACTIONS.get(uid)
 
     if pending == "link":
-        set_invite_link(db, text)
-        PENDING_ACTIONS.pop(uid)
-        send_message(chat_id, "✅ Lien mis à jour", admin_menu())
+        cfg = set_invite_link(db, text)
+        PENDING_ACTIONS.pop(uid, None)
+
+        sent = push_new_link_to_all(db, text)
+
+        send_message(
+            chat_id,
+            f"✅ Lien mis à jour.\n\nLien : {cfg.invite_link}\nEnvoyé à {sent} utilisateur(s).",
+            admin_menu()
+        )
+        return
 
     if pending == "broadcast":
         cfg = ensure_single_group_config(db)
+        PENDING_ACTIONS.pop(uid, None)
+
+        if not cfg.group_chat_id:
+            send_message(chat_id, "❌ Aucun groupe défini.", admin_menu())
+            return
+
         send_message(cfg.group_chat_id, text)
-        PENDING_ACTIONS.pop(uid)
+        create_broadcast_log(db, uid, cfg.group_chat_id, text)
         send_message(chat_id, "✅ Broadcast envoyé", admin_menu())
+        return
 
 
 def handle_group(db, msg):
@@ -184,62 +238,142 @@ def handle_group(db, msg):
     set_group(db, cid, chat.get("title"))
     cfg = ensure_single_group_config(db)
 
+    if "new_chat_members" in msg or "left_chat_member" in msg:
+        try:
+            delete_message(cid, msg["message_id"])
+        except Exception as e:
+            print("DELETE SERVICE MESSAGE ERROR:", str(e), flush=True)
+
     if "new_chat_members" in msg:
+        added_humans = 0
+
         for u in msg["new_chat_members"]:
             if u.get("is_bot"):
                 continue
 
-            if u.get("language_code") and not u["language_code"].startswith("fr"):
-                tg_post("banChatMember", {"chat_id": cid, "user_id": u["id"]})
+            if u.get("language_code") and not language_is_french(u.get("language_code")):
+                try:
+                    tg_post("banChatMember", {"chat_id": cid, "user_id": u["id"]})
+                except Exception as e:
+                    print("BAN ERROR:", str(e), flush=True)
                 continue
 
-            add_join_event(db, u["id"], u.get("username"), u.get("first_name"), u.get("language_code"), None)
+            add_join_event(
+                db,
+                u["id"],
+                u.get("username"),
+                u.get("first_name"),
+                u.get("language_code"),
+                None
+            )
+            added_humans += 1
+
+        if added_humans == 0:
+            return
 
         if should_send_first_promo(db):
-            send_promo(cid, cfg.invite_link, FIRST_PROMO_DELETE_AFTER)
-
+            promo_id = send_promo(cid, cfg.invite_link, FIRST_PROMO_DELETE_AFTER)
+            log_promo(db, cid, "first_join", promo_id)
         elif should_send_every_20_promo(db):
-            send_promo(cid, cfg.invite_link, EACH_20_PROMO_DELETE_AFTER)
+            promo_id = send_promo(cid, cfg.invite_link, EACH_20_PROMO_DELETE_AFTER)
+            log_promo(db, cid, "every_20", promo_id)
+
+
+def handle_my_chat_member(db, upd):
+    chat = upd.get("chat", {})
+    cid = chat.get("id")
+    ctype = chat.get("type")
+
+    if not cid or ctype not in ["group", "supergroup"]:
+        return
+
+    set_group(db, cid, chat.get("title"))
+    cfg = ensure_single_group_config(db)
+
+    new_status = upd.get("new_chat_member", {}).get("status")
+    if new_status in ["member", "administrator"]:
+        promo_id = send_promo(cid, cfg.invite_link, FIRST_PROMO_DELETE_AFTER)
+        log_promo(db, cid, "bot_added", promo_id)
 
 
 def handle_callback(db, cq):
     data = cq["data"]
     uid = cq["from"]["id"]
     chat_id = cq["message"]["chat"]["id"]
+    callback_id = cq["id"]
 
+    # public user callback
+    if data == "get_link":
+        cfg = ensure_single_group_config(db)
+        answer_callback_query(callback_id, "Lien demandé")
+
+        if cfg.invite_link:
+            send_message(
+                chat_id,
+                f"🔗 Voici le lien actuel du groupe :\n{cfg.invite_link}",
+                user_menu()
+            )
+        else:
+            send_message(
+                chat_id,
+                "❌ Le lien du groupe n'a pas encore été défini.",
+                user_menu()
+            )
+        return
+
+    # admin only below
     if not is_admin(db, uid):
+        answer_callback_query(callback_id, "Accès refusé")
         return
 
     if data == "update_link":
         PENDING_ACTIONS[uid] = "link"
-        send_message(chat_id, "Envoie le lien")
+        answer_callback_query(callback_id, "En attente du lien")
+        send_message(chat_id, "Envoie le nouveau lien du groupe", admin_menu())
+        return
 
-    elif data == "broadcast_group":
+    if data == "broadcast_group":
         PENDING_ACTIONS[uid] = "broadcast"
-        send_message(chat_id, "Envoie le message")
+        answer_callback_query(callback_id, "En attente du message")
+        send_message(chat_id, "Envoie le message du broadcast", admin_menu())
+        return
 
-    elif data == "publish_promo":
+    if data == "publish_promo":
         cfg = ensure_single_group_config(db)
 
-        send_promo(
+        if not cfg.group_chat_id:
+            answer_callback_query(callback_id, "Aucun groupe défini")
+            send_message(chat_id, "❌ Aucun groupe défini.", admin_menu())
+            return
+
+        promo_id = send_promo(
             cfg.group_chat_id,
             cfg.invite_link,
             FIRST_PROMO_DELETE_AFTER
         )
+        log_promo(db, cfg.group_chat_id, "manual_publish", promo_id)
 
-        send_message(chat_id, "✅ Promo publiée")
+        answer_callback_query(callback_id, "Promo publiée")
+        send_message(chat_id, "✅ Promo publiée", admin_menu())
+        return
 
-    elif data == "show_stats":
-        send_message(chat_id, build_stats_text(db))
+    if data == "show_stats":
+        answer_callback_query(callback_id, "Statistiques")
+        send_message(chat_id, build_stats_text(db), admin_menu())
+        return
 
-    elif data == "push_link_all":
+    if data == "push_link_all":
         cfg = ensure_single_group_config(db)
-        users = get_all_subscribers(db)
 
-        for u in users:
-            send_message(u.user_id, cfg.invite_link)
+        if not cfg.invite_link:
+            answer_callback_query(callback_id, "Lien non défini")
+            send_message(chat_id, "❌ Aucun lien défini.", admin_menu())
+            return
 
-        send_message(chat_id, "✅ envoyé")
+        sent = push_new_link_to_all(db, cfg.invite_link)
+        answer_callback_query(callback_id, "Lien envoyé")
+        send_message(chat_id, f"✅ envoyé à {sent} utilisateur(s)", admin_menu())
+        return
 
 
 @app.post("/webhook")
@@ -260,6 +394,14 @@ async def webhook(req: Request):
         elif "callback_query" in update:
             handle_callback(db, update["callback_query"])
 
+        elif "my_chat_member" in update:
+            handle_my_chat_member(db, update["my_chat_member"])
+
+    except Exception as e:
+        import traceback
+        print("WEBHOOK ERROR:", str(e), flush=True)
+        traceback.print_exc()
+
     finally:
         db.close()
 
@@ -267,4 +409,8 @@ async def webhook(req: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000))
+    )
