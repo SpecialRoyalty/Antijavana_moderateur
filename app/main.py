@@ -1,5 +1,6 @@
 import os
 import requests
+import uvicorn
 from fastapi import FastAPI, Request
 from .db import Base, engine
 
@@ -13,12 +14,14 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else None
 @app.on_event("startup")
 def startup():
     print("STARTUP OK", flush=True)
+    print("PORT =", os.getenv("PORT"), flush=True)
     Base.metadata.create_all(bind=engine)
     print("TABLES CREATED", flush=True)
 
 
 @app.get("/")
 async def root():
+    print("GET / OK", flush=True)
     return {"status": "ok", "message": "Second bot is running"}
 
 
@@ -56,3 +59,8 @@ async def webhook(request: Request):
             send_message(chat_id, "✅ /start reçu")
 
     return {"ok": True}
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
