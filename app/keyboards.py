@@ -1,3 +1,6 @@
+from urllib.parse import quote
+
+
 def inline_keyboard(rows):
     return {"inline_keyboard": rows}
 
@@ -17,11 +20,22 @@ def user_menu():
     ])
 
 
+def build_share_url(invite_link: str | None) -> str:
+    """
+    Ouvre la fenêtre Telegram de partage vers contacts/groupes/messages enregistrés.
+    """
+    if not invite_link:
+        invite_link = "https://t.me"
+
+    text = "Rejoins ce groupe :"
+    return f"https://t.me/share/url?url={quote(invite_link)}&text={quote(text)}"
+
+
 def promo_buttons(invite_link: str | None, bot_username: str | None):
-    share_url = invite_link or "https://t.me"
+    share_url = build_share_url(invite_link)
     bot_url = f"https://t.me/{bot_username}?start=backup" if bot_username else "https://t.me"
 
     return inline_keyboard([
-        [{"text": "🔗 Partager le groupe", "url": share_url}],
-        [{"text": "🤖 Start bot", "url": bot_url}],
+        [{"text": "🔗 Partager", "url": share_url}],
+        [{"text": "🤖 Je m’enregistre", "url": bot_url}],
     ])
