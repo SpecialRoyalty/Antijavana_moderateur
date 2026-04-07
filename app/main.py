@@ -4,7 +4,9 @@ import requests
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
+
 from .db import Base, engine, SessionLocal
+from . import models  # IMPORTANT: force le chargement des tables SQLAlchemy
 from .keyboards import admin_menu, user_menu, promo_buttons
 from .services import (
     ensure_single_group_config,
@@ -33,7 +35,7 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else None
 PROMO_PHOTO = "https://i.postimg.cc/hPF89qS6/photo-5857106632125386141-y.jpg"
 PROMO_TEXT = (
     "🔥 Bienvenue à tous les Anti-Javana.\n\n"
-    "Javana est un scam.\n"
+    "Javana est un scam.UNE ARNAQUE!\n"
     "Ils récupèrent les vidéos que nous publions pour alimenter leur VIP… "
     "et ensuite nous les faire payer.\n\n"
     "Alors un groupe a décidé de ne plus se plier et de se rebeller.\n\n"
@@ -48,16 +50,19 @@ PROMO_TEXT = (
     "Le contenu ne disparaît jamais.\n\n"
     "Par le peuple, pour le peuple."
 )
-FIRST_PROMO_DELETE_AFTER = 600
+FIRST_PROMO_DELETE_AFTER = 1800
 EACH_20_PROMO_DELETE_AFTER = 300
 
-PENDING_ACTIONS = {}
+# Etats temporaires admin
+PENDING_ACTIONS = {}  # user_id -> "await_link" | "await_broadcast"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("STARTUP OK", flush=True)
     print("DATABASE_URL =", DATABASE_URL, flush=True)
+    print("KNOWN TABLES =", list(Base.metadata.tables.keys()), flush=True)
+
     Base.metadata.create_all(bind=engine)
     print("TABLES CREATED", flush=True)
 
@@ -72,7 +77,7 @@ async def lifespan(app: FastAPI):
                     try:
                         ensure_admin(db, int(raw_id), None)
                     except ValueError:
-                        pass
+                        print(f"ADMIN_ID invalide ignoré: {raw_id}", flush=True)
     finally:
         db.close()
 
@@ -91,6 +96,7 @@ async def root():
 async def set_webhook():
     if not BOT_TOKEN:
         return {"ok": False, "error": "BOT_TOKEN missing"}
+
     if not BASE_URL:
         return {"ok": False, "error": "BASE_URL missing"}
 
@@ -156,6 +162,7 @@ async def delete_later(chat_id: int, message_id: int, delay_seconds: int):
 
 
 def language_is_french(language_code: str | None) -> bool:
+    # Règle choisie: si absent -> on laisse entrer
     if language_code is None:
         return True
     return language_code.lower().startswith("fr")
@@ -212,6 +219,7 @@ def handle_private_message(db, message: dict):
     if not user_id:
         return
 
+    # Enregistre tous ceux qui démarrent le bot en privé
     upsert_subscriber(db, user_id, username, first_name, language_code)
 
     if text == "/start":
@@ -225,6 +233,7 @@ def handle_private_message(db, message: dict):
             )
         return
 
+    # Non-admin: on ignore le reste
     if not is_admin(db, user_id):
         return
 
@@ -233,6 +242,7 @@ def handle_private_message(db, message: dict):
     if pending == "await_link":
         config = set_invite_link(db, text)
         PENDING_ACTIONS.pop(user_id, None)
+
         sent_count = push_new_link_to_all(db, text)
 
         send_message(
@@ -252,6 +262,7 @@ def handle_private_message(db, message: dict):
 
         send_message(int(config.group_chat_id), text)
         create_broadcast_log(db, user_id, int(config.group_chat_id), text)
+
         send_message(chat_id, "✅ Broadcast envoyé dans le groupe.", reply_markup=admin_menu())
         return
 
@@ -271,15 +282,19 @@ def handle_group_message(db, message: dict):
     set_group(db, chat_id, chat_title)
     config = ensure_single_group_config(db)
 
+    # Supprime les messages de service join/leave
     if "new_chat_members" in message or "left_chat_member" in message:
         try:
             delete_message(chat_id, message_id)
         except Exception as e:
             print("DELETE SERVICE MSG ERROR:", str(e), flush=True)
 
+    # Traite les nouveaux membres
     if "new_chat_members" in message:
         invite_link_obj = message.get("invite_link")
         invite_link_used = invite_link_obj.get("invite_link") if isinstance(invite_link_obj, dict) else None
+
+        added_human_count = 0
 
         for user in message["new_chat_members"]:
             if user.get("is_bot"):
@@ -293,6 +308,7 @@ def handle_group_message(db, message: dict):
             if not user_id:
                 continue
 
+            # Filtre langue
             if not language_is_french(language_code):
                 try:
                     ban_chat_member(chat_id, user_id)
@@ -308,7 +324,12 @@ def handle_group_message(db, message: dict):
                 language_code=language_code,
                 invite_link_used=invite_link_used,
             )
+            added_human_count += 1
 
+        if added_human_count == 0:
+            return
+
+        # Premier vrai join humain
         if should_send_first_promo(db):
             promo_message_id = send_promo_message(
                 group_chat_id=chat_id,
@@ -318,6 +339,7 @@ def handle_group_message(db, message: dict):
             log_promo(db, chat_id, "first_join", promo_message_id)
             return
 
+        # Tous les 20 joins
         if should_send_every_20_promo(db):
             promo_message_id = send_promo_message(
                 group_chat_id=chat_id,
@@ -340,17 +362,18 @@ def handle_my_chat_member(db, my_chat_member_update: dict):
     new_chat_member = my_chat_member_update.get("new_chat_member", {})
     new_status = new_chat_member.get("status")
 
+    # Le bot vient d'être ajouté ou promu admin
     if new_status in ["member", "administrator"]:
         set_group(db, chat_id, chat_title)
         config = ensure_single_group_config(db)
 
-        if should_send_first_promo(db):
-            promo_message_id = send_promo_message(
-                group_chat_id=chat_id,
-                invite_link=config.invite_link,
-                delete_after=FIRST_PROMO_DELETE_AFTER,
-            )
-            log_promo(db, chat_id, "first_join", promo_message_id)
+        # Promo à l'arrivée du bot dans le groupe
+        promo_message_id = send_promo_message(
+            group_chat_id=chat_id,
+            invite_link=config.invite_link,
+            delete_after=FIRST_PROMO_DELETE_AFTER,
+        )
+        log_promo(db, chat_id, "bot_added", promo_message_id)
 
 
 def handle_callback(db, callback_query: dict):
@@ -361,8 +384,10 @@ def handle_callback(db, callback_query: dict):
     private_chat_id = callback_query["message"]["chat"]["id"]
     message_id = callback_query["message"]["message_id"]
 
+    # Public: obtenir le lien
     if data == "get_link":
         config = ensure_single_group_config(db)
+
         if config.invite_link:
             answer_callback_query(callback_id, "Lien envoyé")
             send_message(
@@ -379,6 +404,7 @@ def handle_callback(db, callback_query: dict):
             )
         return
 
+    # Le reste: admin seulement
     if not user_id or not is_admin(db, user_id):
         answer_callback_query(callback_id, "Accès refusé")
         return
@@ -417,6 +443,7 @@ def handle_callback(db, callback_query: dict):
 
     if data == "push_link_all":
         config = ensure_single_group_config(db)
+
         if not config.invite_link:
             answer_callback_query(callback_id, "Lien non défini")
             send_message(private_chat_id, "❌ Aucun lien défini.", reply_markup=admin_menu())
