@@ -30,18 +30,17 @@ BOT_USERNAME = os.getenv("BOT_USERNAME")
 
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else None
 
-# promo codé en dur comme demandé
-PROMO_PHOTO = ""
+PROMO_PHOTO = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3"
 PROMO_TEXT = (
     "🔥 Bienvenue dans notre communauté.\n\n"
-    "Partage le groupe à tes amis et démarre le bot pour recevoir automatiquement "
-    "le nouveau lien si le groupe change."
+    "Partage le groupe à tes amis et enregistre-toi avec le bot pour recevoir "
+    "automatiquement le nouveau lien si le groupe change."
 )
 
-FIRST_PROMO_DELETE_AFTER = 600   # 10 min
-EACH_20_PROMO_DELETE_AFTER = 300 # 5 min
+FIRST_PROMO_DELETE_AFTER = 600
+EACH_20_PROMO_DELETE_AFTER = 300
 
-PENDING_ACTIONS = {}  # user_id -> action
+PENDING_ACTIONS = {}
 
 
 @asynccontextmanager
@@ -54,6 +53,7 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         ensure_single_group_config(db)
+
         if ADMIN_IDS.strip():
             for raw_id in ADMIN_IDS.split(","):
                 raw_id = raw_id.strip()
@@ -178,6 +178,7 @@ def send_promo_message(group_chat_id: int, invite_link: str | None, delete_after
 
     try:
         data = r.json()
+        print("PROMO RESPONSE:", data, flush=True)
         if data.get("ok"):
             promo_message_id = data["result"]["message_id"]
             asyncio.create_task(delete_later(group_chat_id, promo_message_id, delete_after))
@@ -259,19 +260,20 @@ def handle_group_message(db, message: dict):
     set_group(db, chat_id, chat_title)
     config = ensure_single_group_config(db)
 
-    # suppression join/leave
     if "new_chat_members" in message or "left_chat_member" in message:
         try:
             delete_message(chat_id, message_id)
         except Exception as e:
             print("DELETE SERVICE MSG ERROR:", str(e), flush=True)
 
-    # nouveaux membres
     if "new_chat_members" in message:
         invite_link_obj = message.get("invite_link")
         invite_link_used = invite_link_obj.get("invite_link") if isinstance(invite_link_obj, dict) else None
 
         for user in message["new_chat_members"]:
+            if user.get("is_bot"):
+                continue
+
             user_id = user.get("id")
             username = user.get("username")
             first_name = user.get("first_name")
@@ -296,7 +298,6 @@ def handle_group_message(db, message: dict):
                 invite_link_used=invite_link_used,
             )
 
-        # promo premier join
         if should_send_first_promo(db):
             promo_message_id = send_promo_message(
                 group_chat_id=chat_id,
@@ -306,7 +307,6 @@ def handle_group_message(db, message: dict):
             log_promo(db, chat_id, "first_join", promo_message_id)
             return
 
-        # promo tous les 20 joins
         if should_send_every_20_promo(db):
             promo_message_id = send_promo_message(
                 group_chat_id=chat_id,
@@ -315,6 +315,31 @@ def handle_group_message(db, message: dict):
             )
             log_promo(db, chat_id, "every_20", promo_message_id)
             return
+
+
+def handle_my_chat_member(db, my_chat_member_update: dict):
+    chat = my_chat_member_update.get("chat", {})
+    chat_id = chat.get("id")
+    chat_title = chat.get("title")
+    chat_type = chat.get("type")
+
+    if not chat_id or chat_type not in ["group", "supergroup"]:
+        return
+
+    new_chat_member = my_chat_member_update.get("new_chat_member", {})
+    new_status = new_chat_member.get("status")
+
+    if new_status in ["member", "administrator"]:
+        set_group(db, chat_id, chat_title)
+        config = ensure_single_group_config(db)
+
+        if should_send_first_promo(db):
+            promo_message_id = send_promo_message(
+                group_chat_id=chat_id,
+                invite_link=config.invite_link,
+                delete_after=FIRST_PROMO_DELETE_AFTER,
+            )
+            log_promo(db, chat_id, "first_join", promo_message_id)
 
 
 def handle_callback(db, callback_query: dict):
@@ -417,6 +442,9 @@ async def webhook(request: Request):
 
         elif "callback_query" in update:
             handle_callback(db, update["callback_query"])
+
+        elif "my_chat_member" in update:
+            handle_my_chat_member(db, update["my_chat_member"])
 
     except Exception as e:
         import traceback
