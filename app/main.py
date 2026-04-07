@@ -48,7 +48,7 @@ PROMO_TEXT = (
     "si le groupe venait à disparaître.\n"
     "Le remplacement est immédiat, automatisé, et actif 24h/24.\n\n"
     "Le contenu ne disparaît jamais.\n\n"
-    "Par le peuple, pour le peuple."
+    "Par le peuple, pour le peuple.")
 
 FIRST_PROMO_DELETE_AFTER = 600
 EACH_20_PROMO_DELETE_AFTER = 300
