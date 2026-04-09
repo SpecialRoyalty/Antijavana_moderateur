@@ -34,21 +34,19 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 PROMO_PHOTO = "https://i.postimg.cc/hPF89qS6/photo-5857106632125386141-y.jpg"
 PROMO_TEXT = (
-    "🔥 Bienvenue à tous les Anti-Javana.\n\n"
-    "Javana est un scam.UNE ARNAQUE!\n"
-    "Ils récupèrent les vidéos que nous publions pour alimenter leur VIP… "
-    "et ensuite nous les faire payer.\n\n"
-    "Alors un groupe a décidé de ne plus se plier et de se rebeller.\n\n"
-    "Ici, pas de hiérarchie, pas de discrimination.\n"
-    "Seulement des bots sous intelligence artificielle pour assurer le bon fonctionnement du groupe.\n\n"
-    "Trop, c’est trop.\n"
-    "Nous savons que cela dérange.\n"
-    "Mais nos bots détectent les traîtres, les signalements abusifs et les infiltrations.\n\n"
-    "Clique sur le bouton pour t’enregistrer et recevoir en temps réel le nouveau lien "
-    "si le groupe venait à disparaître.\n"
-    "Le remplacement est immédiat, automatisé, et actif 24h/24.\n\n"
-    "Le contenu ne disparaît jamais.\n\n"
-    "Par le peuple, pour le peuple.")
+    "Ce groupe contient le plus de médias.\n\n"
+    "Tout le monde doit participer : chacun doit envoyer un média avant de demander.\n\n"
+    "Arrêtez de demander quand il sera possible d’enregistrer.\n"
+    "Pour que les bots vous donnent la possibilité d’enregistrer, c’est simple :\n"
+    "enregistrez-vous avec le bouton ci-dessous 👇👇\n\n"
+    "Les bots sont 100 % automatisés et effectuent toutes les vérifications en temps réel.\n"
+    "Ils vérifient que vous êtes bien enregistré et que vous participez.\n\n"
+    "Cela vous permet de recevoir les nouveaux liens au cas où le groupe saute,\n"
+    "et de partager le groupe.\n\n"
+    "Sans ces deux conditions, vous ne pourrez pas télécharger tous les médias de façon illimitée.\n"
+    "Si vous ne l’avez pas fait, ne vous étonnez pas.\n\n"
+    "Tout le monde doit participer."
+)
 
 FIRST_PROMO_DELETE_AFTER = 1800
 EACH_20_PROMO_DELETE_AFTER = 300
