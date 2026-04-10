@@ -34,20 +34,13 @@ API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 PROMO_PHOTO = "https://i.postimg.cc/hPF89qS6/photo-5857106632125386141-y.jpg"
 PROMO_TEXT = (
-    "Ce groupe contient le plus de médias.\n\n"
-    "Tout le monde doit participer : chacun doit envoyer un média avant de demander.\n\n"
-    "Arrêtez de demander quand il sera possible d’enregistrer.\n"
-    "Pour que les bots vous donnent la possibilité d’enregistrer, c’est simple :\n"
-    "enregistrez-vous avec le bouton ci-dessous 👇👇\n\n"
-    "Les bots sont 100 % automatisés et effectuent toutes les vérifications en temps réel.\n"
-    "Ils vérifient que vous êtes bien enregistré et que vous participez.\n\n"
-    "Cela vous permet de recevoir les nouveaux liens au cas où le groupe saute,\n"
-    "et de partager le groupe.\n\n"
-    "Sans ces deux conditions, vous ne pourrez pas télécharger tous les médias de façon illimitée.\n"
-    "Si vous ne l’avez pas fait, ne vous étonnez pas.\n\n"
-    "Tout le monde doit participer."
+    "🔥 ANTI JAVANA EST DE RETOUR 🔥\n\n"
+    "Pour recevoir le lien en direct au cas où le groupe saute, cliquez sur « m’enregistrer » 👇\n\n"
+    "Pour que les bots vous donnent la possibilité de télécharger les médias :\n"
+    "partagez avec le bouton 👇 après vous être enregistré.\n\n"
+    "Si vous avez la flemme, vous pourrez quand même télécharger une fois l’objectif des 2000 personnes atteint.\n\n"
+    "⚠️ RAPPEL : tout le monde doit participer."
 )
-
 FIRST_PROMO_DELETE_AFTER = 1800
 EACH_20_PROMO_DELETE_AFTER = 300
 
